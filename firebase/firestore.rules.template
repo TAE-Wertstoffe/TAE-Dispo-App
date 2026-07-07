@@ -1,0 +1,74 @@
+rules_version = '2';
+
+// ============================================================================
+// VORLAGE – vor dem Veröffentlichen prüfen und anpassen!
+//
+// Diese Datei ist eine Vorlage für die GS-Berechtigungen bei Probenversand
+// und Belegzentrale. Sie muss mit dem BESTEHENDEN Regelsatz aus der Firebase
+// Console zusammengeführt werden (Console → Firestore → Regeln), denn beim
+// Veröffentlichen werden alle Regeln ersetzt.
+//
+// Anzupassen:
+//  - Collection-Namen an die tatsächlichen Namen in der App angleichen
+//    (z. B. 'probenversand' / 'proben' / 'musterversand', 'belege' / 'belegzentrale').
+//  - Rollenwerte an das Rollenfeld der App angleichen (hier: users/{uid}.role,
+//    Werte z. B. 'admin', 'gs', 'disponent', 'fahrer').
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Hilfsfunktionen -----------------------------------------------
+
+    function angemeldet() {
+      return request.auth != null;
+    }
+
+    function rolle() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function istAdmin() {
+      return angemeldet() && rolle() == 'admin';
+    }
+
+    // GS = Geschäftsstelle/Verwaltung – braucht Zugriff auf Probenversand
+    // und Belegzentrale.
+    function istGS() {
+      return angemeldet() && (rolle() == 'gs' || rolle() == 'admin');
+    }
+
+    // ---- Benutzerprofile -----------------------------------------------
+
+    match /users/{userId} {
+      allow read: if angemeldet();
+      // Rollen darf nur ein Admin vergeben/ändern:
+      allow write: if istAdmin();
+    }
+
+    // ---- Probenversand (Muster-/Proben-Versandmodul) -------------------
+
+    match /probenversand/{dokId} {
+      allow read, create, update: if istGS();
+      // Löschen nur Admin (bzw. Soft-Delete über update abbilden):
+      allow delete: if istAdmin();
+    }
+
+    // ---- Belegzentrale --------------------------------------------------
+
+    match /belegzentrale/{dokId} {
+      allow read, create, update: if istGS();
+      allow delete: if istAdmin();
+    }
+
+    // ---- Bestehende Regeln der App hier einfügen ------------------------
+    //
+    // WICHTIG: Hier müssen die vorhandenen Regeln für alle übrigen
+    // Collections (Touren, Fahrzeuge, Material, Big Bags, …) aus der
+    // Firebase Console eingefügt werden, sonst verlieren alle anderen
+    // App-Bereiche ihren Zugriff!
+    //
+    // match /... { ... }
+
+  }
+}
